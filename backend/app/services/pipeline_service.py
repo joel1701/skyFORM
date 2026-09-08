@@ -2,6 +2,7 @@ from pathlib import Path
 from datetime import datetime
 import json
 import threading
+import os
 
 
 PIPELINE_LOCK = threading.Lock()
@@ -121,6 +122,16 @@ def reset_pipeline_state(
 
     return state
 
+def process_exists(pid):
+    if not pid:
+        return False
+
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except (OSError, ValueError):
+        return False
+
 
 def try_start_pipeline(
     base_dir,
@@ -144,17 +155,20 @@ def try_start_pipeline(
             base_dir
         )
 
-        if (
-            state.get("status")
-            == "running"
-        ):
-            return False, state
+        if state.get("status") == "running":
+            pid = state.get("pid")
 
-        state = _fresh_state()
+            if pid and process_exists(pid):
+                return False, state
+
+            print("Stale pipeline detected. Resetting state.")
+            state = _fresh_state()
 
         state["status"] = (
             "running"
         )
+
+        state["pid"] = os.getpid()
 
         state["video_id"] = (
             str(video_id)
@@ -284,6 +298,8 @@ def mark_pipeline_started(
         state["status"] = (
             "running"
         )
+
+        state["pid"] = os.getpid()
 
         state["video_id"] = (
             str(video_id)
